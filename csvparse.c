@@ -110,6 +110,16 @@ int finalize_eol_found(FSource *source,FProcessState *state)
    return finalize_state(state);
    }
 
+void init_source(FSource *source,char *input,int len)
+   {
+   source->input = input;
+   source->inputlen = len;
+   source->inputpos = 0;
+   source->lastpart = _mm_setzero_si128();
+   source->lp_size = 0;
+   get_next_part(source);
+   }
+
 #define skip_char(source)  if (--source->lp_size > 0) source->lastpart = _mm_shuffle_epi8(source->lastpart,shift_one); \
                            else get_next_part(source);
 
@@ -257,7 +267,7 @@ switch_sym_after_quote:
                   {
                   memcpy(state->value_pos,state->key_buf,state->key_size);
                   state->value_pos += state->key_size;
-                  *output = state->value_pos;
+                  output = &state->value_pos;
                   }
                }
             state->col_num++;
@@ -334,7 +344,7 @@ pr_next_part:
                {
                memcpy(state->value_pos,state->key_buf,state->key_size);
                state->value_pos += state->key_size;
-               *output = state->value_pos;
+               output = &state->value_pos;
                }
             }
          state->col_num++;

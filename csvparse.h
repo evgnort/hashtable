@@ -24,6 +24,7 @@ typedef struct FParseParamsTg {
 
 typedef struct FProcessStateTg FProcessState;
 
+void init_source(FSource *source,char *input,int len);
 int process_row(FSource *source,FProcessState *state);
 
 
