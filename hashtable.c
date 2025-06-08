@@ -199,33 +199,36 @@ static inline int look_ht_8(FHashTable *ht,FProcessState *state,FProcessStateSma
    
    __m256i search = _mm256_set1_epi32(*((int *)state->key_buf));
    __m256i cmpres = _mm256_cmpeq_epi32(headers,search);
-   __m256i refs = _mm256_loadu_si256((__m256i *)&block_ref[8]);
    int res = _mm256_movemask_ps(_mm256_castsi256_ps(cmpres));
-   refs = _mm256_permutevar8x32_epi32(refs,_mm256_loadu_si256((__m256i *)&lut8[res][0]));
-
-   __m256i links1 = _mm256_unpacklo_epi32(refs,zeropad);
-   __m256i links2 = _mm256_unpackhi_epi32(refs,zeropad);
-   links1 = _mm256_sllv_epi32(links1,shifts);
-   links2 = _mm256_sllv_epi32(links2,shifts);
-
-   links1 = _mm256_add_epi64(links1,base);
-   links2 = _mm256_add_epi64(links2,base);
-
-   _mm256_storeu_si256((__m256i *)&state->data_refs[0],links1);
-   _mm256_storeu_si256((__m256i *)&state->data_refs[4],links2);
-   int bcnt = __builtin_popcount(res); // 1 for chain link
+   int bcnt = __builtin_popcount(res); 
    uint32_t nidx = block_ref[15];
-   state->chain_ref = state->data_refs[bcnt] = nidx ? &ht->table[nidx * CACHE_LINE_SIZE] : NULL;
-   state->data_refs[bcnt + 1] = NULL;
-   ht->tick += 25;
+   state->data_ref = &state->data_refs[0];
+   ht->tick += 5;
    ht->pcnt--;
-   if (state->data_refs[0])
-      { // Unpredictable branch, no prefetch here
+
+   if (bcnt + nidx)
+      {
+      ht->tick += 5;
+      __m256i refs = _mm256_loadu_si256((__m256i *)&block_ref[8]);
+      refs = _mm256_permutevar8x32_epi32(refs,_mm256_loadu_si256((__m256i *)&lut8[res][0]));
+
+      __m256i links1 = _mm256_unpacklo_epi32(refs,zeropad);
+      __m256i links2 = _mm256_unpackhi_epi32(refs,zeropad);
+      links1 = _mm256_sllv_epi32(links1,shifts);
+      links2 = _mm256_sllv_epi32(links2,shifts);
+
+      links1 = _mm256_add_epi64(links1,base);
+      links2 = _mm256_add_epi64(links2,base);
+
+      _mm256_storeu_si256((__m256i *)&state->data_refs[0],links1);
+      _mm256_storeu_si256((__m256i *)&state->data_refs[4],links2);
+      state->chain_ref = state->data_refs[bcnt] = nidx ? &ht->table[nidx * CACHE_LINE_SIZE] : NULL;
+      state->data_refs[bcnt + 1] = NULL;
       LOG_RECORD("%d found in table, %d links, chain_ref %s",state->num,bcnt,state->chain_ref ? "present" : "absent");
-      state->data_ref = &state->data_refs[0];
       set_data->states[set_data->count++] = state;
       return 0;
       }
+   state->chain_ref = state->data_refs[0] = NULL;
    LOG_RECORD("%d not found in table",state->num);
    return 1;
    }
@@ -265,47 +268,50 @@ static inline int look_ht_12(FHashTable *ht,FProcessState *state,FProcessStateSm
    __m256i base = _mm256_set_epi64x((uint64_t)ht->data,(uint64_t)ht->data,(uint64_t)ht->data,(uint64_t)ht->data);
    
    __m256i search = _mm256_set1_epi8(state->key_buf[0]);
-   uint32_t bits = block_ref[4];
+   uint32_t bits = block_ref[3];
    uint32_t bit8 = 0xEFF * (state->key_buf[1] & 0x1);
    uint32_t bit9 = 0xEFF * ((state->key_buf[1] & 0x2) >> 1);
    __m256i cmpres = _mm256_cmpeq_epi8(headers,search);
-   __m256i refs1 = _mm256_loadu_si256((__m256i *)&block_ref[4]);
-   __m256i refs2 = _mm256_loadu_si256((__m256i *)&block_ref[8]);
 
-   int res = _mm256_movemask_ps(_mm256_castsi256_ps(cmpres));
+   int res = _mm256_movemask_epi8(cmpres);
    res &= ~(bits ^ bit8) & (~(bits >> 16) ^ bit9) & 0xEFF;
-   
-   int refs1size = __builtin_popcount(res & 0xF);
-   refs1 = _mm256_permutevar8x32_epi32(refs1,_mm256_loadu_si256((__m256i *)&lut12_1[res & 0xF][0]));
-   refs2 = _mm256_permutevar8x32_epi32(refs2,_mm256_loadu_si256((__m256i *)&lut12_2[res >> 4][0]));
 
-   __m256i links1 = _mm256_cvtepu32_epi64(_mm256_castsi256_si128(refs1));
-   __m256i links21 = _mm256_unpacklo_epi32(refs2,zeropad);
-   __m256i links22 = _mm256_unpackhi_epi32(refs2,zeropad);
-   links1 = _mm256_sllv_epi32(links1,shifts);
-   links21 = _mm256_sllv_epi32(links21,shifts);
-   links22 = _mm256_sllv_epi32(links22,shifts);
-
-   links1 = _mm256_add_epi64(links1,base);
-   links21 = _mm256_add_epi64(links21,base);
-   links22 = _mm256_add_epi64(links22,base);
-
-   _mm256_storeu_si256((__m256i *)&state->data_refs[0],links1);
-   _mm256_storeu_si256((__m256i *)&state->data_refs[refs1size],links21);
-   _mm256_storeu_si256((__m256i *)&state->data_refs[refs1size+4],links22);
-   int bcnt = __builtin_popcount(res); // 1 for chain link
+   int bcnt = __builtin_popcount(res); 
    uint32_t nidx = block_ref[15];
-   state->chain_ref = state->data_refs[bcnt] = nidx ? &ht->table[nidx * CACHE_LINE_SIZE] : NULL;
-   state->data_refs[bcnt + 1] = NULL;
-   ht->tick += 25;
+   state->data_ref = &state->data_refs[0];
+   ht->tick += 7;
    ht->pcnt--;
-   if (state->data_refs[0])
-      { // Unpredictable branch, no prefetch here
+   if (bcnt + nidx)
+      {   // Unpredictable branch
+      __m256i refs1 = _mm256_loadu_si256((__m256i *)&block_ref[4]);
+      __m256i refs2 = _mm256_loadu_si256((__m256i *)&block_ref[8]);
+      int refs1size = __builtin_popcount(res & 0xF);
+      refs1 = _mm256_permutevar8x32_epi32(refs1,_mm256_loadu_si256((__m256i *)&lut12_1[res & 0xF][0]));
+      refs2 = _mm256_permutevar8x32_epi32(refs2,_mm256_loadu_si256((__m256i *)&lut12_2[res >> 4][0]));
+
+      __m256i links1 = _mm256_cvtepu32_epi64(_mm256_castsi256_si128(refs1));
+      __m256i links21 = _mm256_unpacklo_epi32(refs2,zeropad);
+      __m256i links22 = _mm256_unpackhi_epi32(refs2,zeropad);
+      links1 = _mm256_sllv_epi32(links1,shifts);
+      links21 = _mm256_sllv_epi32(links21,shifts);
+      links22 = _mm256_sllv_epi32(links22,shifts);
+
+      links1 = _mm256_add_epi64(links1,base);
+      links21 = _mm256_add_epi64(links21,base);
+      links22 = _mm256_add_epi64(links22,base);
+
+      _mm256_storeu_si256((__m256i *)&state->data_refs[0],links1);
+      _mm256_storeu_si256((__m256i *)&state->data_refs[refs1size],links21);
+      _mm256_storeu_si256((__m256i *)&state->data_refs[refs1size+4],links22);
+      ht->tick += 12;
+
+      state->chain_ref = state->data_refs[bcnt] = nidx ? &ht->table[nidx * CACHE_LINE_SIZE] : NULL;
+      state->data_refs[bcnt + 1] = NULL;
       LOG_RECORD("%d found in table, %d links, chain_ref %s",state->num,bcnt,state->chain_ref ? "present" : "absent");
-      state->data_ref = &state->data_refs[0];
       set_data->states[set_data->count++] = state;
       return 0;
       }
+   state->chain_ref = state->data_refs[0] = NULL;
    LOG_RECORD("%d not found in table",state->num);
    return 1;
    }
@@ -364,7 +370,7 @@ void ht_add_12(FHashTable *ht,FProcessState *state)
    chain_ref[3] &= ~(0x10001 << pos);
    chain_ref[3] |= (state->key_buf[1] & 0x1) << pos;
    chain_ref[3] |= (state->key_buf[1] & 0x2) << (pos + 16 - 1);
-   *state->last_chain_ref = *state->key_buf;
+   state->last_chain_ref[pos] = state->key_buf[0];
    chain_ref[pos+4] = dpos;
    ht->tick += 10;
    }
@@ -422,14 +428,14 @@ static inline int look_ht_12_add(FHashTable *ht,FProcessState *state,FProcessSta
    __m256i base = _mm256_set_epi64x((uint64_t)ht->data,(uint64_t)ht->data,(uint64_t)ht->data,(uint64_t)ht->data);
    
    __m256i search = _mm256_set1_epi8(state->key_buf[0]);
-   uint32_t bits = block_ref[4];
+   uint32_t bits = block_ref[3];
    uint32_t bit8 = 0xEFF * (state->key_buf[1] & 0x1);
    uint32_t bit9 = 0xEFF * ((state->key_buf[1] & 0x2) >> 1);
    __m256i cmpres = _mm256_cmpeq_epi8(headers,search);
    __m256i refs1 = _mm256_loadu_si256((__m256i *)&block_ref[4]);
    __m256i refs2 = _mm256_loadu_si256((__m256i *)&block_ref[8]);
 
-   int res = _mm256_movemask_ps(_mm256_castsi256_ps(cmpres));
+   int res = _mm256_movemask_epi8(cmpres);
    res &= ~(bits ^ bit8) & (~(bits >> 16) ^ bit9) & 0xEFF;
    
    int refs1size = __builtin_popcount(res & 0xF);
@@ -466,7 +472,7 @@ static inline int look_ht_12_add(FHashTable *ht,FProcessState *state,FProcessSta
       return 0;
       }
    cmpres = _mm256_cmpeq_epi8(headers,zeropad);
-   res = _mm256_movemask_ps(_mm256_castsi256_ps(cmpres));
+   res = _mm256_movemask_epi8(cmpres);
    res &= ~(bits | (bits >> 16)) & 0xEFF;
 
    state->last_pos = __builtin_ctzl(res);
@@ -510,15 +516,20 @@ int look_in_data_4_states(FHashTable *ht,FProcessStateBigSet *set_data,FProcessS
       output->pos += state0->key_size + 1;
       ht->pcnt--;
       rv++;
+      LOG_RECORD("%d found in table",state0->num);
       }
    else if (*(++state0->data_ref))
       {
       _mm_prefetch(*state0->data_ref,_MM_HINT_T2);
       state0->tick = ht->tick += 5;
       add_state((*state0->data_ref == state0->chain_ref) ? set_headers : set_data,state0);
+      LOG_RECORD("%d false positive, goto %s",state0->num,(*state0->data_ref == state0->chain_ref)?"lh":"ld");
       }
    else
+      {
       ht->pcnt--, rv++;
+      LOG_RECORD("%d false positive, not found in table",state0->num);
+      }
 
    FProcessState *state2 = get_state(set_data);
    __m256i data20 = _mm256_loadu_si256((__m256i *)(*state2->data_ref + 4));
@@ -535,15 +546,20 @@ int look_in_data_4_states(FHashTable *ht,FProcessStateBigSet *set_data,FProcessS
       output->pos += state1->key_size + 1;
       ht->pcnt--;
       rv++;
+      LOG_RECORD("%d found in table",state1->num);
       }
    else if (*(++state1->data_ref))
       {
       _mm_prefetch(*state1->data_ref,_MM_HINT_T2);
       state1->tick = ht->tick += 5;
       add_state((*state1->data_ref == state1->chain_ref) ? set_headers : set_data,state1);
+      LOG_RECORD("%d false positive, goto %s",state1->num,(*state1->data_ref == state1->chain_ref)?"lh":"ld");
       }
    else
+      {
       ht->pcnt--, rv++;
+      LOG_RECORD("%d false positive, not found in table",state1->num);
+      }
 
    FProcessState *state3 = get_state(set_data);
    __m256i data30 = _mm256_loadu_si256((__m256i *)(*state3->data_ref + 4));
@@ -560,15 +576,20 @@ int look_in_data_4_states(FHashTable *ht,FProcessStateBigSet *set_data,FProcessS
       output->pos += state2->key_size + 1;
       ht->pcnt--;
       rv++;
+      LOG_RECORD("%d found in table",state2->num);
       }
    else if (*(++state2->data_ref))
       {
       _mm_prefetch(*state2->data_ref,_MM_HINT_T2);
       state2->tick = ht->tick += 5;
       add_state((*state2->data_ref == state2->chain_ref) ? set_headers : set_data,state2);
+      LOG_RECORD("%d false positive, goto %s",state2->num,(*state2->data_ref == state2->chain_ref)?"lh":"ld");
       }
    else
+      {
       ht->pcnt--, rv++;
+      LOG_RECORD("%d false positive, not found in table",state2->num);
+      }
 
    key_mask = (1LL << state3->key_size) - 1;
    res_mask = ((uint64_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(key30,data30)) << 32) | _mm256_movemask_epi8(_mm256_cmpeq_epi8(key31,data31));
@@ -579,15 +600,20 @@ int look_in_data_4_states(FHashTable *ht,FProcessStateBigSet *set_data,FProcessS
       output->pos += state3->key_size + 1;
       ht->pcnt--;
       rv++;
+      LOG_RECORD("%d found in table",state3->num);
       }
    else if (*(++state3->data_ref))
       {
       _mm_prefetch(*state3->data_ref,_MM_HINT_T2);
       state3->tick = ht->tick += 5;
       add_state((*state3->data_ref == state3->chain_ref) ? set_headers : set_data,state3);
+      LOG_RECORD("%d false positive, goto %s",state3->num,(*state3->data_ref == state3->chain_ref)?"lh":"ld");
       }
    else
+      {
       ht->pcnt--, rv++;
+      LOG_RECORD("%d false positive, not found in table",state3->num);
+      }
    return rv;
    }
 
@@ -644,10 +670,6 @@ int64_t get_nanotime(void)
    clock_gettime(CLOCK_MONOTONIC,&t);
    return t.tv_sec * 1000000000 + t.tv_nsec;
    }
-
-#define STATES_STEP 512
-#define ITER_COUNT 20
-#define STATES_COUNT (STATES_STEP*ITER_COUNT)
 
 void process_add_8(FHashTable *ht,FSource *source, FProcessState *states)
    {
@@ -816,7 +838,10 @@ double process_search_8(FHashTable *ht,FSource *source, FProcessState *states,FO
             {
             make_hashes16(ht,(int *)states,&set_by_size[ks],ks+1);
             for(j = 0; j < 16; j++)
+               {
+               LOG_RECORD("%d added to unpref",set_by_size[ks].states[j]->num);
                add_state(&unpref,set_by_size[ks].states[j]);
+               }
             set_by_size[ks].count = 0;
             }
 
@@ -827,6 +852,7 @@ double process_search_8(FHashTable *ht,FSource *source, FProcessState *states,FO
             ht->pcnt++;
             state->tick = ht->tick + MEM_DELAY;
             add_state((*state->data_ref == state->chain_ref) ? &lh : &ld,state);
+            LOG_RECORD("%d prefetched and pushed in %s",state->num,(*state->data_ref == state->chain_ref) ? "lh":"ld");
             }
          while(lh.count && get_state_link(&lh,0)->tick <= ht->tick)
             processed += look_ht_8(ht,get_state(&lh),&unpref2);
@@ -837,6 +863,7 @@ double process_search_8(FHashTable *ht,FSource *source, FProcessState *states,FO
             ht->pcnt++;
             state->tick = ht->tick + MEM_DELAY;
             add_state((*state->data_ref == state->chain_ref) ? &lh : &ld,state);
+            LOG_RECORD("%d prefetched 2 and pushed in %s",state->num,(*state->data_ref == state->chain_ref) ? "lh":"ld");
             }
          unpref2.count = 0;
          while(ld.count >= 4 && get_state_link(&ld,3)->tick <= ht->tick)
@@ -913,7 +940,7 @@ double process_search_12(FHashTable *ht,FSource *source, FProcessState *states,F
    return (double)tm/processed;
    }
 
-int main(void)
+int main(int argc, char *argv[ ])
    {
    FHashTable ht;
    ht.table_size = ht.unlocated = TABLE_SIZE;
@@ -923,15 +950,21 @@ int main(void)
    memset(ht.data,0,ITEMS_COUNT * 128);
    ht.data_pos = 1;
 
+   if (argc < 3)
+      return printf("Format: ./hashtable.out file1 file2\n"),1;
+
    INIT_LOG("ht.log");
-   const char *filename1 = "input1.csv";
-   const char *filename2 = "input2.csv";
 
-   off_t sz1 = file_size(filename1);
-   off_t sz2 = file_size(filename2);
+   off_t sz1 = file_size(argv[1]);
+   if (sz1 < 0)
+      return printf("file %s not found\n",argv[1]),1;
 
-   char *filedata = read_file(filename1,sz1);
-   char *filedata2 = read_file(filename2,sz2);
+   off_t sz2 = file_size(argv[2]);
+   if (sz2 < 0)
+      return printf("file %s not found\n",argv[2]),1;
+
+   char *filedata = read_file(argv[1],sz1);
+   char *filedata2 = read_file(argv[2],sz2);
 
    make_lut8();
 

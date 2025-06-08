@@ -4,12 +4,16 @@
 #include <stdint.h>
 
 #define CACHE_LINE_SIZE 64
-#define MAX_PREFETCH 16
+#define MAX_PREFETCH 32
 
 #define MEM_DELAY 200
 
 #define ITEMS_COUNT 1000000
 #define TABLE_SIZE (ITEMS_COUNT / 8)
+
+#define STATES_STEP 512
+#define ITER_COUNT 20
+#define STATES_COUNT (STATES_STEP*ITER_COUNT)
 
 typedef struct FParseParamsTg FParseParams;
 
@@ -33,7 +37,7 @@ typedef struct FProcessStateTg {
    int num;
    } FProcessState;
 
-#define BIG_SET_SIZE 512
+#define BIG_SET_SIZE 1024
 typedef struct FProcessStateBigSetTg
    {
    FProcessState *states[BIG_SET_SIZE];
