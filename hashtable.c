@@ -967,6 +967,7 @@ int main(int argc, char *argv[ ])
    char *filedata2 = read_file(argv[2],sz2);
 
    make_lut8();
+   make_lut12();
 
    FSource source,source2;
    init_source(&source,filedata,sz1);
