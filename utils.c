@@ -11,7 +11,7 @@
 
 FILE *logFile;
 
-void init_log(char *filename)
+void init_log(const char *filename)
    {
    logFile = fopen(filename,"w");
    }

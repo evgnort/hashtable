@@ -4,16 +4,15 @@
 #include <stdint.h>
 
 #define CACHE_LINE_SIZE 64
-#define MAX_PREFETCH 32
+#define MAX_PREFETCH 16
 
 #define MEM_DELAY 200
 
 #define ITEMS_COUNT 1000000
 #define TABLE_SIZE (ITEMS_COUNT / 8)
 
-#define STATES_STEP 512
-#define ITER_COUNT 20
-#define STATES_COUNT (STATES_STEP*ITER_COUNT)
+#define ITER_COUNT 10
+#define STATES_COUNT 1024
 
 typedef struct FParseParamsTg FParseParams;
 
@@ -29,12 +28,12 @@ typedef struct FProcessStateTg {
 
    uint64_t tick;
 
-   char *data_refs[14];
    char *chain_ref;
+   char *data_refs[12];
    char **data_ref;
    char *last_chain_ref;
-   int last_pos;
    int num;
+   int offset;
    } FProcessState;
 
 #define BIG_SET_SIZE 1024
@@ -54,6 +53,7 @@ typedef struct FProcessStateBigSetTg
 
 typedef struct FProcessStateSmallSetTg
    {
+   int offsets[SMALL_SET_SIZE];
    FProcessState *states[SMALL_SET_SIZE];
    int count;
    } FProcessStateSmallSet;
@@ -74,6 +74,20 @@ typedef struct FHashTableTg {
 
    uint64_t tick;
    int pcnt;
+
+#ifdef DEBUG_COUNTERS
+   int fp;
+   int found;
+   int not_found;
+   int not_found2;
+   int chain;
+#endif
+
+   FProcessStateBigSet *unpref;
+   FProcessStateBigSet *empty;
+   FProcessStateBigSet *loaded;
+   FProcessStateBigSet *h_req;
+   FProcessStateBigSet *d_req;
    } FHashTable;
 
 #endif // !_HASHTABLE_H

@@ -29,7 +29,7 @@ for (0 .. $count - 1)
 	{
 	my ($name,$val) = get_rand_line();
 	print $fh1 $name."\t".$val."\n";
-	$present{$name} = $val;
+	$present{$name} = $name;
 	}
 	
 my $cnt = 0;
@@ -37,6 +37,7 @@ while ($cnt < $count)
 	{
 	my ($name,$val) = get_rand_line();
 	next if ($present{$name});
+	$present{$name} = 1;
 	print $fh2 $name."\t".$val."\n";
 	$cnt++;
 	}
