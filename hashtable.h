@@ -1,49 +1,33 @@
+# Copyright (C) Evgeniy Buevich
+
 #ifndef _HASHTABLE_H
 #define _HASHTABLE_H
 
 #include <stdint.h>
 
+#include "request.h"
+
 #define CACHE_LINE_SIZE 64
+#define PAGE_SIZE 4096
 #define MAX_PREFETCH 16
 
 #define MEM_DELAY 200
 
-#define ITEMS_COUNT 1000000
-#define TABLE_SIZE (ITEMS_COUNT / 8)
-
-#define ITER_COUNT 10
-#define STATES_COUNT 1024
+#define DEF_ITEMS_COUNT 1000000
 
 typedef struct FParseParamsTg FParseParams;
 
-typedef struct FProcessStateTg {
-   char key_buf[128]; // For case when key column is not in value
-   char *key_pos;
-   int key_size;
-   char value_start[128];
-   char *value_pos;
-   int value_size;
-   int col_num;
-   FParseParams *pp;
+// 128 byte on state data
 
-   uint64_t tick;
-
-   char *chain_ref;
-   char *data_refs[12];
-   char **data_ref;
-   char *last_chain_ref;
-   int num;
-   int offset;
-   } FProcessState;
-
-#define BIG_SET_SIZE 1024
-typedef struct FProcessStateBigSetTg
+typedef struct FRequestSetTg
    {
-   FProcessState *states[BIG_SET_SIZE];
+   FProcessState *states[STATES_COUNT];
    int first;
    int last;
    int count;
-   } FProcessStateBigSet;
+   } FRequestSet;
+
+extern int lut8[256][8];
 
 #if MAX_PREFETCH > 16
 #define SMALL_SET_SIZE MAX_PREFETCH
@@ -64,6 +48,15 @@ typedef struct FOutputTg
    char *pos;
    } FOutput;
 
+typedef enum ERequestStateTg {
+   RS_Empty,
+   RS_Loaded,
+   RS_Unpref,
+   RS_Header,
+   RS_Data,
+   RS_MAX
+   } ERequestState;
+
 typedef struct FHashTableTg {
    char *table;
    uint32_t table_size;
@@ -73,7 +66,15 @@ typedef struct FHashTableTg {
    uint32_t data_pos;
 
    uint64_t tick;
+
    int pcnt;
+   uint32_t items_count;
+
+   uint32_t table_large;
+   uint32_t data_large;
+
+   FProcessState *states;
+   char *value_store;
 
 #ifdef DEBUG_COUNTERS
    int fp;
@@ -83,11 +84,14 @@ typedef struct FHashTableTg {
    int chain;
 #endif
 
-   FProcessStateBigSet *unpref;
-   FProcessStateBigSet *empty;
-   FProcessStateBigSet *loaded;
-   FProcessStateBigSet *h_req;
-   FProcessStateBigSet *d_req;
+   FRequestSet sets[RS_MAX];
    } FHashTable;
+
+typedef struct FParseStateTg FParseState;
+
+void reset_state(FParseState *pstate,FProcessState *state);
+int64_t get_nanotime(void);
+
+void make_hash(FHashTable *ht,FProcessState *state,int ssize);
 
 #endif // !_HASHTABLE_H

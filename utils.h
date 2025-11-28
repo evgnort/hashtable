@@ -1,3 +1,5 @@
+# Copyright (C) Evgeniy Buevich
+
 #ifndef _UTILS_H
 #define _UTILS_H
 

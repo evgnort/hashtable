@@ -3,13 +3,17 @@ use strict;
 
 my @letters = split('','abcdefghijklmnopqrstuvwxyz0123456789-');
 my @exts = ('.com','.net','.org','.ru');
+my $minlen = 6;
+my $maxlen = 12;
 
 sub get_rand_line
 	{
-	my $len = int(rand(30)) + 3;
+	my $len = int(rand($maxlen - $minlen + 1)) + $minlen;
+	my $ext = $exts[int(rand(scalar(@exts)))];
+	$len -= length($ext);
 	my $name = $letters[int(rand(36))];
 	$name .= $letters[int(rand(37))] for (1 .. $len - 1);
-	$name .= $exts[int(rand(scalar(@exts)))];
+	$name .= $ext;
 	my $vlen = int(rand(50));
 	my $val = '';
 	$val .= $letters[int(rand(36))] for (1..$vlen);
@@ -20,9 +24,9 @@ my $count = $ARGV[0];
 my ($file1,$file2) = ($ARGV[1],$ARGV[2]);
 my ($fh1,$fh2);
 if ($file1)
-	{ open $fh1,'>',$file1; }
+	{ open $fh1,'>',$file1; binmode($fh1); }
 if ($file2)
-	{ open $fh2,'>',$file2; }
+	{ open $fh2,'>',$file2; binmode($fh2);}
 
 my %present = ();
 for (0 .. $count - 1)
